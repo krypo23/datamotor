@@ -5,23 +5,25 @@ type Auto = {
   marca: string;
   modelo: string | null;
   modelo_version: string | null;
-  anio: number | null;
+  anio: number | null; // si en DB es "año", usa alias anio:año en el select
 };
+
+// claves que mostramos en la tabla (type-safe)
+type CampoClave = keyof Pick<Auto, 'marca' | 'modelo' | 'modelo_version' | 'anio'>;
 
 function parseIds(raw?: string): number[] {
   if (!raw) return [];
   const ids = raw
     .split(',')
     .map(s => parseInt(s.trim(), 10))
-    .filter(n => Number.isFinite(n));
-  // quita duplicados manteniendo orden
+    .filter(Number.isFinite);
   return [...new Set(ids)];
 }
 
 async function fetchAutos(ids: number[]) {
   const { data, error } = await supabase
     .from('autos')
-    .select('id_auto, marca, modelo, modelo_version, anio') // si tu columna es "año", usa anio:año
+    .select('id_auto, marca, modelo, modelo_version, anio') // si tu columna real es "año", usa: anio:año
     .in('id_auto', ids);
 
   if (error) throw error;
@@ -50,11 +52,12 @@ export default async function CompararPage({
   let autos: Auto[] = [];
   try {
     autos = await fetchAutos(ids);
-  } catch (e: any) {
+  } catch (e: unknown) { // <-- OJO: 'unknown' (con 'wn')
+    const message = e instanceof Error ? e.message : 'Error desconocido';
     return (
       <main className="p-6">
         <h1 className="text-2xl font-bold mb-4">Comparador de Autos</h1>
-        <p className="text-red-600">Error al obtener datos: {e.message}</p>
+        <p className="text-red-600">Error al obtener datos: {message}</p>
       </main>
     );
   }
@@ -68,11 +71,11 @@ export default async function CompararPage({
     );
   }
 
-  const filas = [
-    { label: 'Marca', key: 'marca' as const },
-    { label: 'Modelo', key: 'modelo' as const },
-    { label: 'Versión', key: 'modelo_version' as const },
-    { label: 'Año', key: 'anio' as const },
+  const filas: Array<{ label: string; key: CampoClave }> = [
+    { label: 'Marca', key: 'marca' },
+    { label: 'Modelo', key: 'modelo' },
+    { label: 'Versión', key: 'modelo_version' },
+    { label: 'Año', key: 'anio' },
   ];
 
   return (
@@ -102,7 +105,6 @@ export default async function CompararPage({
                 <td className="border p-2 font-medium">{fila.label}</td>
                 {autos.map(a => (
                   <td key={`${fila.key}-${a.id_auto}`} className="border p-2">
-                    {/* @ts-expect-error index access */}
                     {a[fila.key] ?? '—'}
                   </td>
                 ))}
