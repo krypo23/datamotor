@@ -5,29 +5,21 @@ type Auto = {
   marca: string;
   modelo: string | null;
   modelo_version: string | null;
-  anio: number | null; // si en DB es "año", usa alias anio:año en el select
+  anio: number | null;
 };
 
-// claves que mostramos en la tabla (type-safe)
-type CampoClave = keyof Pick<Auto, 'marca' | 'modelo' | 'modelo_version' | 'anio'>;
-
-function parseIds(raw?: string): number[] {
-  if (!raw) return [];
-  const ids = raw
-    .split(',')
-    .map(s => parseInt(s.trim(), 10))
-    .filter(Number.isFinite);
-  return [...new Set(ids)];
-}
-
-async function fetchAutos(ids: number[]) {
+async function obtenerAutos(ids: string[]): Promise<Auto[]> {
   const { data, error } = await supabase
     .from('autos')
-    .select('id_auto, marca, modelo, modelo_version, anio') // si tu columna real es "año", usa: anio:año
-    .in('id_auto', ids);
+    .select('id_auto, marca, modelo, modelo_version, anio')
+    .in('id_auto', ids.map(id => parseInt(id)));
 
-  if (error) throw error;
-  return (data ?? []) as Auto[];
+  if (error) {
+    console.error("Error al obtener autos:", error);
+    return [];
+  }
+
+  return data as Auto[];
 }
 
 export default async function CompararPage({
@@ -35,34 +27,26 @@ export default async function CompararPage({
 }: {
   searchParams: { ids?: string };
 }) {
-  const ids = parseIds(searchParams.ids);
+  // 1. Capturar IDs desde la URL (?ids=1,2,3)
+  const ids = searchParams.ids?.split(',').map(id => id.trim()) ?? [];
 
   if (ids.length === 0) {
     return (
-      <main className="p-6 space-y-3">
-        <h1 className="text-2xl font-bold">Comparador de Autos</h1>
-        <p className="text-gray-700">
-          Agrega IDs en la URL para comparar. Ejemplo:{' '}
-          <code className="bg-gray-100 px-1 rounded">/comparar?ids=1,2,3</code>
+      <main className="p-6">
+        <h1 className="text-2xl font-bold mb-4">Comparador de Autos</h1>
+        <p className="text-gray-600">
+          Selecciona autos para comparar usando la URL, ejemplo:
+          <br />
+          <code>?ids=1,2,3</code>
         </p>
       </main>
     );
   }
 
-  let autos: Auto[] = [];
-  try {
-    autos = await fetchAutos(ids);
-  } catch (e: unknown) { // <-- OJO: 'unknown' (con 'wn')
-    const message = e instanceof Error ? e.message : 'Error desconocido';
-    return (
-      <main className="p-6">
-        <h1 className="text-2xl font-bold mb-4">Comparador de Autos</h1>
-        <p className="text-red-600">Error al obtener datos: {message}</p>
-      </main>
-    );
-  }
+  // 2. Obtener datos desde Supabase
+  const autos = await obtenerAutos(ids);
 
-  if (!autos.length) {
+  if (!autos || autos.length === 0) {
     return (
       <main className="p-6">
         <h1 className="text-2xl font-bold mb-4">Comparador de Autos</h1>
@@ -71,45 +55,39 @@ export default async function CompararPage({
     );
   }
 
-  const filas: Array<{ label: string; key: CampoClave }> = [
-    { label: 'Marca', key: 'marca' },
-    { label: 'Modelo', key: 'modelo' },
-    { label: 'Versión', key: 'modelo_version' },
-    { label: 'Año', key: 'anio' },
-  ];
-
+  // 3. Renderizar tabla comparativa
   return (
     <main className="p-6">
       <h1 className="text-2xl font-bold mb-6">Comparador de Autos</h1>
-
-      <div className="mb-3 text-sm text-gray-600">
-        Comparando IDs:{' '}
-        <code className="bg-gray-100 px-1 rounded">{ids.join(', ')}</code>
-      </div>
-
       <div className="overflow-x-auto">
         <table className="min-w-full border border-gray-300 text-sm">
-          <thead className="bg-gray-50">
+          <thead>
             <tr>
-              <th className="border p-2 text-left">Campo</th>
-              {autos.map(a => (
-                <th key={a.id_auto} className="border p-2 text-left">
-                  {a.marca} {a.modelo ?? ''} ({a.anio ?? '—'})
+              <th className="border p-2 text-left bg-gray-100">Campo</th>
+              {autos.map(auto => (
+                <th key={auto.id_auto} className="border p-2 bg-gray-50">
+                  {auto.marca} {auto.modelo}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filas.map(fila => (
-              <tr key={fila.key}>
-                <td className="border p-2 font-medium">{fila.label}</td>
-                {autos.map(a => (
-                  <td key={`${fila.key}-${a.id_auto}`} className="border p-2">
-                    {a[fila.key] ?? '—'}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            <tr>
+              <td className="border p-2 font-medium">Versión</td>
+              {autos.map(auto => (
+                <td key={auto.id_auto} className="border p-2">
+                  {auto.modelo_version ?? '—'}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td className="border p-2 font-medium">Año</td>
+              {autos.map(auto => (
+                <td key={auto.id_auto} className="border p-2">
+                  {auto.anio ?? '—'}
+                </td>
+              ))}
+            </tr>
           </tbody>
         </table>
       </div>
